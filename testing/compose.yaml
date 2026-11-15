@@ -1,0 +1,22 @@
+# The tests' servers: Google's Spanner emulator 1.5.28 (its REST API on 19020, no login), and
+# the same behind TLS on 19443 (a certificate for spanner.spelaion.test signed by keys/ca.crt,
+# from testing/gen-keys.sh). ci/services.sh creates the instance `test` and the database
+# `demo` in project `spelaion` once it answers. Memory is bounded: 1 GB and 256 MB.
+name: spelaion-plugin-spanner
+
+services:
+  spanner:
+    image: gcr.io/cloud-spanner-emulator/emulator:1.5.28
+    mem_limit: 1g
+    ports:
+      - "127.0.0.1:19020:9020"
+
+  tls:
+    image: haproxy:3.2-alpine
+    mem_limit: 256m
+    depends_on: [spanner]
+    ports:
+      - "127.0.0.1:19443:9443"
+    volumes:
+      - ./tls/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./keys/server.pem:/usr/local/etc/haproxy/server.pem:ro
