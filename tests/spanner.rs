@@ -186,9 +186,13 @@ async fn schema_changes_data_changes_and_transactions() {
     let _turn = SCHEMA.lock().await;
     let conn = conn.as_ref();
     let table = unique("Sdb352");
+    // Written under comments, as an editor's script keeps them: Spanner's DDL takes none.
     exec(
         conn,
-        &format!("CREATE TABLE {table} (id INT64 NOT NULL, s STRING(MAX)) PRIMARY KEY (id)"),
+        &format!(
+            "# the test's table\n-- one more\n/* and a block */\n\
+             CREATE TABLE {table} (id INT64 NOT NULL, s STRING(MAX)) PRIMARY KEY (id)"
+        ),
     )
     .await;
     assert_eq!(
