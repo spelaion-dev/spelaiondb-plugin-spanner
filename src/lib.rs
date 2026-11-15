@@ -277,18 +277,23 @@ enum Kind {
     Change,
 }
 
-fn kind(sql: &str) -> Kind {
+/// The statement after the comments before its first word (`--`, `#` and `/* */`, which
+/// SpelaionDB's splitter keeps with the statement that follows them).
+fn after_comments(sql: &str) -> &str {
     let mut rest = sql.trim_start();
-    // Comments and hints before the first word.
     loop {
         if let Some(after) = rest.strip_prefix("--").or_else(|| rest.strip_prefix('#')) {
             rest = after.split_once('\n').map_or("", |(_, r)| r).trim_start();
         } else if let Some(after) = rest.strip_prefix("/*") {
             rest = after.split_once("*/").map_or("", |(_, r)| r).trim_start();
         } else {
-            break;
+            return rest;
         }
     }
+}
+
+fn kind(sql: &str) -> Kind {
+    let rest = after_comments(sql);
     if rest.starts_with('(') || rest.starts_with('@') {
         return Kind::Query;
     }
@@ -564,11 +569,17 @@ impl Session {
         }
     }
 
-    /// A schema change through the admin API, followed until its operation is done.
+    /// A schema change through the admin API, followed until its operation is done. Spanner's
+    /// DDL parser takes no comments: the ones before the statement are left out.
     async fn ddl(&mut self, sql: &str) -> Result<()> {
         let path = format!("/v1/{}/ddl", self.database);
+        let statement = after_comments(sql);
         let mut operation = self
-            .call(Method::PATCH, &path, Some(json!({ "statements": [sql] })))
+            .call(
+                Method::PATCH,
+                &path,
+                Some(json!({ "statements": [statement] })),
+            )
             .await?;
         let name = operation
             .get("name")
@@ -1006,6 +1017,19 @@ mod tests {
         ] {
             assert_eq!(kind(sql), k, "{sql}");
         }
+    }
+
+    #[test]
+    fn comments_before_a_statement_are_left_out() {
+        assert_eq!(
+            after_comments("# a; note\n-- another\n/* and */ CREATE TABLE t"),
+            "CREATE TABLE t"
+        );
+        assert_eq!(
+            after_comments("CREATE TABLE t -- kept"),
+            "CREATE TABLE t -- kept"
+        );
+        assert_eq!(after_comments("-- only a comment"), "");
     }
 
     #[test]
